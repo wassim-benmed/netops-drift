@@ -1,0 +1,58 @@
+import os
+from pathlib import Path
+
+import yaml
+from dotenv import load_dotenv
+from netmiko import ConnectHandler
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+BACKUP_DIR = BASE_DIR / "configs" / "backups"
+
+load_dotenv(BASE_DIR / ".env")
+
+# maps the "type" written in inventory.yaml to the Netmiko driver name
+DEVICE_TYPES = {"mikrotik": "mikrotik_routeros"}
+
+
+def load_inventory():
+    with open(BASE_DIR / "inventory.yaml", encoding="utf-8") as f:
+        return yaml.safe_load(f)["devices"]
+
+
+def clean_config(raw):
+    # RouterOS adds header lines starting with "#" that contain the date.
+    # They change at every export and would look like a false drift.
+    lines = [l.rstrip() for l in raw.splitlines() if not l.startswith("#")]
+    return "\n".join(lines).strip() + "\n"
+
+
+def fetch_config(device):
+    conn = ConnectHandler(
+        device_type=DEVICE_TYPES[device["type"]],
+        host=device["host"],
+        username=os.getenv("ROUTER_USER"),
+        password=os.getenv("ROUTER_PASS"),
+    )
+    try:
+        raw = conn.send_command("/export")
+    finally:
+        conn.disconnect()
+    return clean_config(raw)
+
+
+def save_backup(name, config):
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    path = BACKUP_DIR / f"{name}.rsc"
+    path.write_text(config, encoding="utf-8")
+    return path
+
+
+if __name__ == "__main__":
+    for device in load_inventory():
+        print(f"[+] Collecting {device['name']} ({device['host']})...")
+        try:
+            config = fetch_config(device)
+            path = save_backup(device["name"], config)
+            print(f"    saved to {path}")
+        except Exception as e:
+            print(f"    ERROR: {e}")
