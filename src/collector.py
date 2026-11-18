@@ -11,7 +11,9 @@ BACKUP_DIR = BASE_DIR / "configs" / "backups"
 load_dotenv(BASE_DIR / ".env")
 
 # maps the "type" written in inventory.yaml to the Netmiko driver name
-DEVICE_TYPES = {"mikrotik": "mikrotik_routeros"}
+DEVICE_TYPES = {"mikrotik": "mikrotik_routeros", "vyos": "vyos"}
+
+SECRET_WORDS = ("password", "secret", "private-key")
 
 
 def load_inventory():
@@ -20,10 +22,18 @@ def load_inventory():
 
 
 def clean_config(raw):
-    # RouterOS adds header lines starting with "#" that contain the date.
-    # They change at every export and would look like a false drift.
-    lines = [l.rstrip() for l in raw.splitlines() if not l.startswith("#")]
-    return "\n".join(lines).strip() + "\n"
+    # 1. RouterOS adds header lines starting with "#" that contain the date.
+    #    They change at every export and would look like a false drift.
+    # 2. Secrets (password hashes, keys) must never be stored in Git.
+    out = []
+    for line in raw.splitlines():
+        if line.startswith("#"):
+            continue
+        line = line.rstrip()
+        if "'" in line and any(w in line for w in SECRET_WORDS):
+            line = line.split("'")[0] + "'<REDACTED>'"
+        out.append(line)
+    return "\n".join(out).strip() + "\n"
 
 
 def fetch_config(device):
@@ -34,7 +44,10 @@ def fetch_config(device):
         password=os.getenv("ROUTER_PASS"),
     )
     try:
-        raw = conn.send_command("/export")
+        if device["type"] == "vyos":
+            raw = conn.send_command("show configuration commands")
+        else:
+            raw = conn.send_command("/export")
     finally:
         conn.disconnect()
     return clean_config(raw)
@@ -42,7 +55,7 @@ def fetch_config(device):
 
 def save_backup(name, config):
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    path = BACKUP_DIR / f"{name}.rsc"
+    path = BACKUP_DIR / f"{name}.cfg"
     path.write_text(config, encoding="utf-8")
     return path
 
