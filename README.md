@@ -207,4 +207,3 @@ The exit code is `0` when there is no drift and `1` when there is a drift or an 
 \- Several devices and vendors (MikroTik is already prepared in the collector)
 
 \- Scheduled runs and a CI pipeline
-
