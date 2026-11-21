@@ -2,3 +2,8 @@ devices:
   - name: router1
     host: 192.168.150.140
     type: vyos
+  - name: mikrotik1
+    host: 192.168.150.141
+    type: mikrotik
+    username_env: MIKROTIK_USER
+    password_env: MIKROTIK_PASS

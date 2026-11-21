@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 
 import yaml
@@ -14,6 +15,11 @@ load_dotenv(BASE_DIR / ".env")
 DEVICE_TYPES = {"mikrotik": "mikrotik_routeros", "vyos": "vyos"}
 
 SECRET_WORDS = ("password", "secret", "private-key")
+
+# RouterOS style: key=value or key="value" (password, secret, keys...)
+SECRET_PATTERN = re.compile(
+    r'(password|secret|private-key|pre-shared-key|passphrase)=("[^"]*"|\S+)'
+)
 
 
 def load_inventory():
@@ -32,16 +38,21 @@ def clean_config(raw):
         line = line.rstrip()
         if "'" in line and any(w in line for w in SECRET_WORDS):
             line = line.split("'")[0] + "'<REDACTED>'"
+        line = SECRET_PATTERN.sub(r"\1=<REDACTED>", line)
         out.append(line)
     return "\n".join(out).strip() + "\n"
 
 
 def fetch_config(device):
+    # each device can name its own variables in .env (username_env / password_env)
+    # otherwise the default ROUTER_USER / ROUTER_PASS are used
+    username = os.getenv(device.get("username_env", "ROUTER_USER"))
+    password = os.getenv(device.get("password_env", "ROUTER_PASS"))
     conn = ConnectHandler(
         device_type=DEVICE_TYPES[device["type"]],
         host=device["host"],
-        username=os.getenv("ROUTER_USER"),
-        password=os.getenv("ROUTER_PASS"),
+        username=username,
+        password=password,
     )
     try:
         if device["type"] == "vyos":
