@@ -1,38 +1,20 @@
 import sys
 
-from collector import fetch_config, load_inventory, save_backup
-from drift import GOLDEN_DIR, compare
-from notifier import notify_drift, send_alert
+from core import check_all
 from report import main as build_report
 
 
 def main():
     problems = 0
-    for device in load_inventory():
-        name = device["name"]
-        print(f"[+] {name}: collecting config...")
-        try:
-            config = fetch_config(device)
-        except Exception as e:
-            print(f"    ERROR: {e}")
-            send_alert(
-                f"Collection failed on {name}",
-                f"Could not read the config of {name}.",
-                priority="high",
-                tags="x",
-            )
+    for r in check_all():
+        name = r["name"]
+        if r["status"] == "ERROR":
+            print(f"[ERROR] {name}: {r['error']}")
             problems += 1
-            continue
-        save_backup(name, config)
-
-        if not (GOLDEN_DIR / f"{name}.cfg").exists():
-            print(f"    no golden config for {name}, comparison skipped")
-            continue
-
-        added, removed = compare(name)
-        if added or removed:
-            print(f"[DRIFT] {name}: {len(added)} added, {len(removed)} removed")
-            notify_drift(name, added, removed)
+        elif r["status"] == "NO_GOLDEN":
+            print(f"[!] {name}: no golden config, comparison skipped")
+        elif r["status"] == "DRIFT":
+            print(f"[DRIFT] {name}: {len(r['added'])} added, {len(r['removed'])} removed")
             problems += 1
         else:
             print(f"[OK] {name}: no drift")
