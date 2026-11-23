@@ -3,8 +3,10 @@ import streamlit as st
 from collector import BACKUP_DIR
 from core import approve_golden, check_all
 from drift import GOLDEN_DIR
+from auth import require_login
 
 st.set_page_config(page_title="NetOps Controller", layout="wide")
+require_login()
 
 STATUS_LABEL = {
     "OK": ":green[OK]",
